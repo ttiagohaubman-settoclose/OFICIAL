@@ -1,0 +1,37 @@
+[
+  {
+    "id": "1",
+    "username": "admin",
+    "password": "settoclose2024",
+    "role": "admin",
+    "clientId": null
+  },
+  {
+    "id": "2",
+    "username": "jorge",
+    "password": "client2024",
+    "role": "client",
+    "clientId": "jorge"
+  },
+  {
+    "id": "3",
+    "username": "fernando",
+    "password": "client2024",
+    "role": "client",
+    "clientId": "fernando"
+  },
+  {
+    "id": "4",
+    "username": "danelly",
+    "password": "client2024",
+    "role": "client",
+    "clientId": "danelly"
+  },
+  {
+    "id": "5",
+    "username": "ay",
+    "password": "client2024",
+    "role": "client",
+    "clientId": "ay"
+  }
+]
