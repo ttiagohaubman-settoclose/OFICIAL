@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -16,6 +16,7 @@ interface MetricsChartProps {
   clientId: string;
   startDate: string;
   endDate: string;
+  externalData?: DailyMetrics[];
 }
 
 const METRIC_OPTIONS: { key: MetricKey; label: string }[] = [
@@ -28,36 +29,15 @@ const METRIC_OPTIONS: { key: MetricKey; label: string }[] = [
   { key: "cpl", label: "CPL ($)" },
 ];
 
-export function MetricsChart({ clientId, startDate, endDate }: MetricsChartProps) {
+export function MetricsChart({ externalData = [] }: MetricsChartProps) {
   const [metric, setMetric] = useState<MetricKey>("spend");
-  const [data, setData] = useState<DailyMetrics[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams({ client: clientId, startDate, endDate });
-      const res = await fetch(`/api/chart?${params}`);
-      if (!res.ok) throw new Error("Failed to load chart data");
-      const json = await res.json();
-      setData(json);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
-    } finally {
-      setLoading(false);
-    }
-  }, [clientId, startDate, endDate]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
 
   const selectedLabel = METRIC_OPTIONS.find((m) => m.key === metric)?.label ?? metric;
 
   function formatValue(v: number): string {
     if (metric === "spend" || metric === "cpc" || metric === "cpl") return `$${v.toFixed(2)}`;
     if (metric === "ctr") return `${v.toFixed(2)}%`;
-    return v.toFixed(2);
+    return v.toFixed(0);
   }
 
   function formatDate(d: string): string {
@@ -66,13 +46,13 @@ export function MetricsChart({ clientId, startDate, endDate }: MetricsChartProps
   }
 
   return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl p-6">
+    <div className="bg-white dark:bg-[#111] border border-gray-100 dark:border-[#1c1c1c] rounded-xl p-6">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Performance Over Time</h3>
         <select
           value={metric}
           onChange={(e) => setMetric(e.target.value as MetricKey)}
-          className="text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300"
+          className="text-sm border border-gray-200 dark:border-[#2a2a2a] rounded-lg px-2 py-1.5 bg-white dark:bg-[#1a1a1a] text-gray-700 dark:text-[#ccc]"
         >
           {METRIC_OPTIONS.map((m) => (
             <option key={m.key} value={m.key}>{m.label}</option>
@@ -80,26 +60,22 @@ export function MetricsChart({ clientId, startDate, endDate }: MetricsChartProps
         </select>
       </div>
 
-      {loading ? (
-        <div className="h-48 flex items-center justify-center text-gray-400 text-sm">Loading chart...</div>
-      ) : error ? (
-        <div className="h-48 flex items-center justify-center text-red-400 text-sm">{error}</div>
-      ) : data.length === 0 ? (
+      {externalData.length === 0 ? (
         <div className="h-48 flex items-center justify-center text-gray-400 text-sm">No data for this period</div>
       ) : (
         <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" className="dark:stroke-gray-800" />
+          <LineChart data={externalData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1c1c1c" />
             <XAxis
               dataKey="date"
               tickFormatter={formatDate}
-              tick={{ fontSize: 11, fill: "#9ca3af" }}
+              tick={{ fontSize: 11, fill: "#555" }}
               axisLine={false}
               tickLine={false}
             />
             <YAxis
               tickFormatter={(v) => formatValue(v)}
-              tick={{ fontSize: 11, fill: "#9ca3af" }}
+              tick={{ fontSize: 11, fill: "#555" }}
               axisLine={false}
               tickLine={false}
               width={60}
@@ -108,19 +84,20 @@ export function MetricsChart({ clientId, startDate, endDate }: MetricsChartProps
               formatter={(v) => [formatValue(Number(v ?? 0)), selectedLabel]}
               labelFormatter={(d) => formatDate(String(d ?? ""))}
               contentStyle={{
-                border: "1px solid #e5e7eb",
+                background: "#111",
+                border: "1px solid #2a2a2a",
                 borderRadius: "8px",
                 fontSize: "12px",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                color: "#fff",
               }}
             />
             <Line
               type="monotone"
               dataKey={metric}
-              stroke="#000000"
-              strokeWidth={2}
+              stroke="#ffffff"
+              strokeWidth={1.5}
               dot={false}
-              activeDot={{ r: 4 }}
+              activeDot={{ r: 4, fill: "#fff" }}
             />
           </LineChart>
         </ResponsiveContainer>

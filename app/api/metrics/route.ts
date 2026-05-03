@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getMetaMetrics } from "@/lib/meta";
 import { getGHLMetrics } from "@/lib/ghl";
-import { getClientById, CLIENTS } from "@/lib/config";
+import { CLIENTS } from "@/lib/config";
 import { ClientMetrics } from "@/types";
 
 export async function GET(req: NextRequest) {
@@ -18,7 +18,6 @@ export async function GET(req: NextRequest) {
   const userRole = (session.user as any).role;
   const userClientId = (session.user as any).clientId;
 
-  // Determine which clients to fetch
   let clientsToFetch = CLIENTS;
   if (userRole === "client") {
     clientsToFetch = CLIENTS.filter((c) => c.id === userClientId);
@@ -28,27 +27,23 @@ export async function GET(req: NextRequest) {
 
   const results: ClientMetrics[] = await Promise.all(
     clientsToFetch.map(async (client) => {
-      try {
-        const [meta, ghl] = await Promise.all([
-          getMetaMetrics(client.adAccountId, startDate, endDate),
-          getGHLMetrics(client.ghlTag, client.payout),
-        ]);
+      const [metaResult, ghlResult] = await Promise.allSettled([
+        getMetaMetrics(client.adAccountId, startDate, endDate),
+        getGHLMetrics(client.ghlTag, client.payout),
+      ]);
 
-        const roas = meta.spend > 0 ? ghl.revenue / meta.spend : 0;
+      const meta = metaResult.status === "fulfilled" ? metaResult.value : null;
+      const ghlRaw = ghlResult.status === "fulfilled" ? ghlResult.value : null;
 
-        return {
-          client,
-          meta,
-          ghl: { ...ghl, roas: parseFloat(roas.toFixed(2)) },
-        };
-      } catch (error) {
-        return {
-          client,
-          meta: null,
-          ghl: null,
-          error: error instanceof Error ? error.message : "Unknown error",
-        };
-      }
+      const roas = meta && ghlRaw && meta.spend > 0 ? ghlRaw.revenue / meta.spend : 0;
+      const ghl = ghlRaw ? { ...ghlRaw, roas: parseFloat(roas.toFixed(2)) } : null;
+
+      const errors = [
+        metaResult.status === "rejected" ? `Meta: ${metaResult.reason?.message}` : null,
+        ghlResult.status === "rejected" ? `GHL: ${ghlResult.reason?.message}` : null,
+      ].filter(Boolean).join(" | ");
+
+      return { client, meta, ghl, error: errors || undefined };
     })
   );
 
