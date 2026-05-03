@@ -38,7 +38,7 @@ export const CLIENTS: ClientConfig[] = [
 export const GHL_TAGS = {
   scheduled: 'scheduled',
   english: 'english',
-  spanish: 'spanish',
+  spanish: 'español',
   venta: 'venta',
   pagada: 'pagada',
 } as const;
