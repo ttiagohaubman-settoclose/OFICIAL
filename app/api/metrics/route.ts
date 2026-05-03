@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getMetaMetrics } from "@/lib/meta";
-import { getGHLMetrics } from "@/lib/ghl";
+import { fetchAllGHLContacts, computeGHLMetrics } from "@/lib/ghl";
 import { CLIENTS } from "@/lib/config";
 import { ClientMetrics } from "@/types";
 
@@ -25,22 +25,37 @@ export async function GET(req: NextRequest) {
     clientsToFetch = CLIENTS.filter((c) => c.id === clientParam);
   }
 
+  // Fetch GHL contacts ONCE for all clients (avoids rate limiting)
+  let allGHLContacts: Awaited<ReturnType<typeof fetchAllGHLContacts>> | null = null;
+  let ghlError: string | null = null;
+
+  try {
+    allGHLContacts = await fetchAllGHLContacts();
+  } catch (err) {
+    ghlError = err instanceof Error ? err.message : "GHL fetch failed";
+  }
+
+  // Fetch Meta in parallel for all clients
   const results: ClientMetrics[] = await Promise.all(
     clientsToFetch.map(async (client) => {
-      const [metaResult, ghlResult] = await Promise.allSettled([
-        getMetaMetrics(client.adAccountId, startDate, endDate),
-        getGHLMetrics(client.ghlTag, client.payout),
-      ]);
+      const metaResult = await getMetaMetrics(client.adAccountId, startDate, endDate)
+        .then((v) => ({ ok: true as const, value: v }))
+        .catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : "Meta error" }));
 
-      const meta = metaResult.status === "fulfilled" ? metaResult.value : null;
-      const ghlRaw = ghlResult.status === "fulfilled" ? ghlResult.value : null;
+      const meta = metaResult.ok ? metaResult.value : null;
 
-      const roas = meta && ghlRaw && meta.spend > 0 ? ghlRaw.revenue / meta.spend : 0;
-      const ghl = ghlRaw ? { ...ghlRaw, roas: parseFloat(roas.toFixed(2)) } : null;
+      const ghl =
+        allGHLContacts
+          ? (() => {
+              const g = computeGHLMetrics(allGHLContacts, client.ghlTag, client.payout);
+              const roas = meta && meta.spend > 0 ? g.revenue / meta.spend : 0;
+              return { ...g, roas: parseFloat(roas.toFixed(2)) };
+            })()
+          : null;
 
       const errors = [
-        metaResult.status === "rejected" ? `Meta: ${metaResult.reason?.message}` : null,
-        ghlResult.status === "rejected" ? `GHL: ${ghlResult.reason?.message}` : null,
+        !metaResult.ok ? `Meta: ${metaResult.error}` : null,
+        ghlError ? `GHL: ${ghlError}` : null,
       ].filter(Boolean).join(" | ");
 
       return { client, meta, ghl, error: errors || undefined };

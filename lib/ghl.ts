@@ -4,7 +4,7 @@ const GHL_BASE = "https://services.leadconnectorhq.com";
 const GHL_TOKEN = process.env.GHL_TOKEN;
 const LOCATION_ID = process.env.GHL_LOCATION_ID;
 
-interface GHLContact {
+export interface GHLContact {
   id: string;
   tags?: string[];
 }
@@ -22,33 +22,45 @@ function ghlHeaders() {
   };
 }
 
-// Fetch ALL contacts for the location (no tag filter — API v2 doesn't support it)
-// then filter client-side
-async function fetchAllContacts(): Promise<GHLContact[]> {
-  const all: GHLContact[] = [];
-  let startAfterId: string | undefined = undefined;
+async function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
-  while (true) {
-    const params = new URLSearchParams({
-      locationId: LOCATION_ID!,
-      limit: "100",
-    });
-    if (startAfterId) params.set("startAfterId", startAfterId);
+async function fetchPage(startAfterId?: string): Promise<GHLContactsResponse> {
+  const params = new URLSearchParams({ locationId: LOCATION_ID!, limit: "100" });
+  if (startAfterId) params.set("startAfterId", startAfterId);
 
+  for (let attempt = 0; attempt < 4; attempt++) {
     const res = await fetch(`${GHL_BASE}/contacts/?${params}`, {
       headers: ghlHeaders(),
       next: { revalidate: 0 },
     });
+
+    if (res.status === 429) {
+      await sleep(Math.pow(2, attempt) * 1000); // 1s, 2s, 4s, 8s
+      continue;
+    }
 
     if (!res.ok) {
       const err = await res.text();
       throw new Error(`GHL API error: ${res.status} - ${err}`);
     }
 
-    const json: GHLContactsResponse = await res.json();
+    return res.json();
+  }
+
+  throw new Error("GHL API error: 429 Too Many Requests after retries");
+}
+
+// Fetch ALL contacts for the location in one shot
+export async function fetchAllGHLContacts(): Promise<GHLContact[]> {
+  const all: GHLContact[] = [];
+  let startAfterId: string | undefined = undefined;
+
+  while (true) {
+    const json = await fetchPage(startAfterId);
     const contacts = json.contacts ?? [];
     all.push(...contacts);
-
     if (contacts.length < 100) break;
     startAfterId = contacts[contacts.length - 1].id;
   }
@@ -57,29 +69,15 @@ async function fetchAllContacts(): Promise<GHLContact[]> {
 }
 
 function hasTag(contact: GHLContact, tag: string): boolean {
-  return (contact.tags ?? []).some(
-    (t) => t.toLowerCase() === tag.toLowerCase()
-  );
+  return (contact.tags ?? []).some((t) => t.toLowerCase() === tag.toLowerCase());
 }
 
-// Cache contacts per request to avoid refetching for each client
-let _cache: { contacts: GHLContact[]; at: number } | null = null;
-
-async function getCachedContacts(): Promise<GHLContact[]> {
-  const now = Date.now();
-  if (_cache && now - _cache.at < 5 * 60 * 1000) return _cache.contacts;
-  const contacts = await fetchAllContacts();
-  _cache = { contacts, at: now };
-  return contacts;
-}
-
-export async function getGHLMetrics(
+// Compute metrics for one client from a pre-fetched contact list
+export function computeGHLMetrics(
+  allContacts: GHLContact[],
   clientTag: string,
   payout: number
-): Promise<GHLMetrics> {
-  const allContacts = await getCachedContacts();
-
-  // Filter to this client's contacts
+): GHLMetrics {
   const clientContacts = allContacts.filter((c) => hasTag(c, clientTag));
 
   const scheduled = clientContacts.filter((c) => hasTag(c, "scheduled")).length;
