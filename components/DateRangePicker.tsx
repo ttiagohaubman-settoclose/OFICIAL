@@ -13,14 +13,14 @@ interface DateRangePickerProps {
   onChange: (range: DateRange) => void;
 }
 
-function today(): string {
-  return new Date().toISOString().split("T")[0];
+function localDate(d = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function daysAgo(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().split("T")[0];
+  return localDate(d);
 }
 
 function monthStart(): string {
@@ -32,17 +32,14 @@ function lastMonthRange(): DateRange {
   const d = new Date();
   const first = new Date(d.getFullYear(), d.getMonth() - 1, 1);
   const last = new Date(d.getFullYear(), d.getMonth(), 0);
-  return {
-    startDate: first.toISOString().split("T")[0],
-    endDate: last.toISOString().split("T")[0],
-  };
+  return { startDate: localDate(first), endDate: localDate(last) };
 }
 
 const PRESETS = [
-  { label: "Today", range: () => ({ startDate: today(), endDate: today() }) },
-  { label: "Last 7 days", range: () => ({ startDate: daysAgo(6), endDate: today() }) },
-  { label: "Last 30 days", range: () => ({ startDate: daysAgo(29), endDate: today() }) },
-  { label: "This month", range: () => ({ startDate: monthStart(), endDate: today() }) },
+  { label: "Today", range: () => ({ startDate: localDate(), endDate: localDate() }) },
+  { label: "Last 7 days", range: () => ({ startDate: daysAgo(6), endDate: localDate() }) },
+  { label: "Last 30 days", range: () => ({ startDate: daysAgo(29), endDate: localDate() }) },
+  { label: "This month", range: () => ({ startDate: monthStart(), endDate: localDate() }) },
   { label: "Last month", range: () => lastMonthRange() },
 ];
 
@@ -54,7 +51,7 @@ export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
     <div className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+        className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-200 dark:border-[#2a2a2a] rounded-lg bg-white dark:bg-[#111] text-gray-700 dark:text-[#ccc] hover:bg-gray-50 dark:hover:bg-[#1a1a1a] transition-colors"
       >
         <CalendarDays size={15} />
         <span>
@@ -68,44 +65,44 @@ export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-2 z-20 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-2 min-w-[200px]">
+          <div className="absolute right-0 mt-2 z-20 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-lg p-2 min-w-[200px]">
             {PRESETS.map((p) => (
               <button
                 key={p.label}
                 onClick={() => { onChange(p.range()); setOpen(false); setCustom(false); }}
-                className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 transition-colors"
+                className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-[#1a1a1a] text-gray-700 dark:text-[#ccc] transition-colors"
               >
                 {p.label}
               </button>
             ))}
-            <div className="border-t border-gray-100 dark:border-gray-800 my-1" />
+            <div className="border-t border-gray-100 dark:border-[#2a2a2a] my-1" />
             <button
               onClick={() => setCustom(!custom)}
-              className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 transition-colors"
+              className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-[#1a1a1a] text-gray-700 dark:text-[#ccc] transition-colors"
             >
               Custom range
             </button>
             {custom && (
               <div className="px-3 py-2 space-y-2">
                 <div>
-                  <label className="text-xs text-gray-400 dark:text-gray-500">From</label>
+                  <label className="text-xs text-gray-400 dark:text-[#555]">From</label>
                   <input
                     type="date"
                     value={value.startDate}
                     max={value.endDate}
                     onChange={(e) => onChange({ ...value, startDate: e.target.value })}
-                    className="w-full mt-1 px-2 py-1 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                    className="w-full mt-1 px-2 py-1 text-sm border border-gray-200 dark:border-[#2a2a2a] rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-400 dark:text-gray-500">To</label>
+                  <label className="text-xs text-gray-400 dark:text-[#555]">To</label>
                   <input
                     type="date"
                     value={value.endDate}
                     min={value.startDate}
-                    max={today()}
+                    max={localDate()}
                     onChange={(e) => onChange({ ...value, endDate: e.target.value })}
-                    className="w-full mt-1 px-2 py-1 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                    className="w-full mt-1 px-2 py-1 text-sm border border-gray-200 dark:border-[#2a2a2a] rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white"
                   />
                 </div>
                 <button

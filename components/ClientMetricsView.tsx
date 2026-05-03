@@ -13,19 +13,19 @@ interface ClientMetricsViewProps {
   title: string;
 }
 
+function localDate(d = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function monthStart(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
-function todayStr(): string {
-  return new Date().toISOString().split("T")[0];
-}
-
 export function ClientMetricsView({ clientId, title }: ClientMetricsViewProps) {
   const [dateRange, setDateRange] = useState<DateRange>({
     startDate: monthStart(),
-    endDate: todayStr(),
+    endDate: localDate(),
   });
   const [metrics, setMetrics] = useState<ClientMetrics | null>(null);
   const [dailyData, setDailyData] = useState<DailyMetrics[]>([]);

@@ -22,17 +22,18 @@ function ghlHeaders() {
   };
 }
 
-async function fetchAllContactsWithTag(tag: string): Promise<GHLContact[]> {
+// Fetch ALL contacts for the location (no tag filter — API v2 doesn't support it)
+// then filter client-side
+async function fetchAllContacts(): Promise<GHLContact[]> {
   const all: GHLContact[] = [];
-  let after: string | undefined = undefined;
+  let startAfterId: string | undefined = undefined;
 
   while (true) {
     const params = new URLSearchParams({
       locationId: LOCATION_ID!,
       limit: "100",
-      tags: tag,
     });
-    if (after) params.set("startAfterId", after);
+    if (startAfterId) params.set("startAfterId", startAfterId);
 
     const res = await fetch(`${GHL_BASE}/contacts/?${params}`, {
       headers: ghlHeaders(),
@@ -48,8 +49,8 @@ async function fetchAllContactsWithTag(tag: string): Promise<GHLContact[]> {
     const contacts = json.contacts ?? [];
     all.push(...contacts);
 
-    if (contacts.length < 100 || !json.meta?.nextPageUrl) break;
-    after = contacts[contacts.length - 1].id;
+    if (contacts.length < 100) break;
+    startAfterId = contacts[contacts.length - 1].id;
   }
 
   return all;
@@ -61,18 +62,32 @@ function hasTag(contact: GHLContact, tag: string): boolean {
   );
 }
 
+// Cache contacts per request to avoid refetching for each client
+let _cache: { contacts: GHLContact[]; at: number } | null = null;
+
+async function getCachedContacts(): Promise<GHLContact[]> {
+  const now = Date.now();
+  if (_cache && now - _cache.at < 5 * 60 * 1000) return _cache.contacts;
+  const contacts = await fetchAllContacts();
+  _cache = { contacts, at: now };
+  return contacts;
+}
+
 export async function getGHLMetrics(
   clientTag: string,
   payout: number
 ): Promise<GHLMetrics> {
-  const contacts = await fetchAllContactsWithTag(clientTag);
+  const allContacts = await getCachedContacts();
 
-  const scheduled = contacts.filter((c) => hasTag(c, "scheduled")).length;
-  const venta = contacts.filter((c) => hasTag(c, "venta")).length;
-  const pagada = contacts.filter((c) => hasTag(c, "pagada")).length;
+  // Filter to this client's contacts
+  const clientContacts = allContacts.filter((c) => hasTag(c, clientTag));
+
+  const scheduled = clientContacts.filter((c) => hasTag(c, "scheduled")).length;
+  const venta = clientContacts.filter((c) => hasTag(c, "venta")).length;
+  const pagada = clientContacts.filter((c) => hasTag(c, "pagada")).length;
 
   const showRate = scheduled > 0 ? (venta / scheduled) * 100 : 0;
-  const closeRate = venta > 0 ? (venta / scheduled) * 100 : 0;
+  const closeRate = scheduled > 0 ? (venta / scheduled) * 100 : 0;
 
   return {
     citasAgendadas: scheduled,
