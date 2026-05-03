@@ -11,7 +11,6 @@ export interface GHLContact {
 
 interface GHLContactsResponse {
   contacts: GHLContact[];
-  meta?: { total?: number; nextPageUrl?: string | null };
 }
 
 function ghlHeaders() {
@@ -22,24 +21,19 @@ function ghlHeaders() {
   };
 }
 
-async function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 async function fetchPage(startAfterId?: string): Promise<GHLContactsResponse> {
   const params = new URLSearchParams({ locationId: LOCATION_ID!, limit: "100" });
   if (startAfterId) params.set("startAfterId", startAfterId);
 
-  for (let attempt = 0; attempt < 4; attempt++) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
+  try {
     const res = await fetch(`${GHL_BASE}/contacts/?${params}`, {
       headers: ghlHeaders(),
+      signal: controller.signal,
       next: { revalidate: 0 },
     });
-
-    if (res.status === 429) {
-      await sleep(Math.pow(2, attempt) * 1000); // 1s, 2s, 4s, 8s
-      continue;
-    }
 
     if (!res.ok) {
       const err = await res.text();
@@ -47,20 +41,25 @@ async function fetchPage(startAfterId?: string): Promise<GHLContactsResponse> {
     }
 
     return res.json();
+  } finally {
+    clearTimeout(timeout);
   }
-
-  throw new Error("GHL API error: 429 Too Many Requests after retries");
 }
 
-// Fetch ALL contacts for the location in one shot
+// Max 10 pages = 1000 contacts to stay within Vercel's 10s timeout
+const MAX_PAGES = 10;
+
 export async function fetchAllGHLContacts(): Promise<GHLContact[]> {
   const all: GHLContact[] = [];
   let startAfterId: string | undefined = undefined;
+  let page = 0;
 
-  while (true) {
+  while (page < MAX_PAGES) {
     const json = await fetchPage(startAfterId);
     const contacts = json.contacts ?? [];
     all.push(...contacts);
+    page++;
+
     if (contacts.length < 100) break;
     startAfterId = contacts[contacts.length - 1].id;
   }
@@ -72,7 +71,6 @@ function hasTag(contact: GHLContact, tag: string): boolean {
   return (contact.tags ?? []).some((t) => t.toLowerCase() === tag.toLowerCase());
 }
 
-// Compute metrics for one client from a pre-fetched contact list
 export function computeGHLMetrics(
   allContacts: GHLContact[],
   clientTag: string,

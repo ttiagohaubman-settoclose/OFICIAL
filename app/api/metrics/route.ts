@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getMetaMetrics } from "@/lib/meta";
-import { fetchAllGHLContacts, computeGHLMetrics } from "@/lib/ghl";
 import { CLIENTS } from "@/lib/config";
-import { ClientMetrics } from "@/types";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -25,40 +23,17 @@ export async function GET(req: NextRequest) {
     clientsToFetch = CLIENTS.filter((c) => c.id === clientParam);
   }
 
-  // Fetch GHL contacts ONCE for all clients (avoids rate limiting)
-  let allGHLContacts: Awaited<ReturnType<typeof fetchAllGHLContacts>> | null = null;
-  let ghlError: string | null = null;
-
-  try {
-    allGHLContacts = await fetchAllGHLContacts();
-  } catch (err) {
-    ghlError = err instanceof Error ? err.message : "GHL fetch failed";
-  }
-
-  // Fetch Meta in parallel for all clients
-  const results: ClientMetrics[] = await Promise.all(
+  const results = await Promise.all(
     clientsToFetch.map(async (client) => {
       const metaResult = await getMetaMetrics(client.adAccountId, startDate, endDate)
         .then((v) => ({ ok: true as const, value: v }))
         .catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : "Meta error" }));
 
-      const meta = metaResult.ok ? metaResult.value : null;
-
-      const ghl =
-        allGHLContacts
-          ? (() => {
-              const g = computeGHLMetrics(allGHLContacts, client.ghlTag, client.payout);
-              const roas = meta && meta.spend > 0 ? g.revenue / meta.spend : 0;
-              return { ...g, roas: parseFloat(roas.toFixed(2)) };
-            })()
-          : null;
-
-      const errors = [
-        !metaResult.ok ? `Meta: ${metaResult.error}` : null,
-        ghlError ? `GHL: ${ghlError}` : null,
-      ].filter(Boolean).join(" | ");
-
-      return { client, meta, ghl, error: errors || undefined };
+      return {
+        client,
+        meta: metaResult.ok ? metaResult.value : null,
+        metaError: metaResult.ok ? null : metaResult.error,
+      };
     })
   );
 
