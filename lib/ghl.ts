@@ -1,34 +1,55 @@
 import { GHLMetrics } from "@/types";
 
-const GHL_BASE = "https://rest.gohighlevel.com/v1";
+const GHL_BASE = "https://services.leadconnectorhq.com";
 const GHL_TOKEN = process.env.GHL_TOKEN;
 const LOCATION_ID = process.env.GHL_LOCATION_ID;
+
+const GHL_HEADERS = {
+  Authorization: `Bearer ${GHL_TOKEN}`,
+  Version: "2021-07-28",
+  "Content-Type": "application/json",
+};
 
 interface GHLContact {
   id: string;
   tags?: string[];
 }
 
-interface GHLResponse {
+interface GHLSearchResponse {
   contacts: GHLContact[];
-  meta?: { total: number };
+  total: number;
+  startAfter?: string;
+  startAfterId?: string;
 }
 
 async function fetchContactsByTag(tag: string): Promise<GHLContact[]> {
   const all: GHLContact[] = [];
-  let page = 1;
+  let startAfter: number | undefined;
+  let startAfterId: string | undefined;
   const limit = 100;
 
   while (true) {
-    const params = new URLSearchParams({
-      locationId: LOCATION_ID!,
-      limit: String(limit),
-      page: String(page),
-      tags: tag,
-    });
+    const body: Record<string, unknown> = {
+      locationId: LOCATION_ID,
+      pageSize: limit,
+      filters: [
+        {
+          field: "tags",
+          operator: "contains_any",
+          value: [tag],
+        },
+      ],
+    };
 
-    const res = await fetch(`${GHL_BASE}/contacts/?${params}`, {
-      headers: { Authorization: `Bearer ${GHL_TOKEN}` },
+    if (startAfter !== undefined && startAfterId !== undefined) {
+      body.startAfter = startAfter;
+      body.startAfterId = startAfterId;
+    }
+
+    const res = await fetch(`${GHL_BASE}/contacts/search`, {
+      method: "POST",
+      headers: GHL_HEADERS,
+      body: JSON.stringify(body),
       next: { revalidate: 0 },
     });
 
@@ -37,12 +58,13 @@ async function fetchContactsByTag(tag: string): Promise<GHLContact[]> {
       throw new Error(`GHL API error: ${res.status} - ${err}`);
     }
 
-    const json: GHLResponse = await res.json();
+    const json: GHLSearchResponse = await res.json();
     const contacts = json.contacts ?? [];
     all.push(...contacts);
 
-    if (contacts.length < limit) break;
-    page++;
+    if (contacts.length < limit || !json.startAfter) break;
+    startAfter = Number(json.startAfter);
+    startAfterId = json.startAfterId;
   }
 
   return all;
@@ -58,16 +80,13 @@ export async function getGHLMetrics(
   clientTag: string,
   payout: number
 ): Promise<GHLMetrics> {
-  // Fetch contacts with the client tag
   const contacts = await fetchContactsByTag(clientTag);
 
   const scheduled = contacts.filter((c) => hasTag(c, "scheduled")).length;
   const venta = contacts.filter((c) => hasTag(c, "venta")).length;
   const pagada = contacts.filter((c) => hasTag(c, "pagada")).length;
 
-  // Shows = contacts that have both scheduled + venta (showed AND closed) OR we estimate from closed
-  // Show rate = deals closed / scheduled (since no separate "show" tag exists)
-  const shows = venta; // approximate: anyone who closed must have shown
+  const shows = venta;
   const showRate = scheduled > 0 ? (shows / scheduled) * 100 : 0;
   const closeRate = shows > 0 ? (venta / shows) * 100 : 0;
 
@@ -82,6 +101,6 @@ export async function getGHLMetrics(
     closeRate: parseFloat(closeRate.toFixed(2)),
     revenue,
     cashCollected,
-    roas: 0, // calculated after combining with meta spend
+    roas: 0,
   };
 }
